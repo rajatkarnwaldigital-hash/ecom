@@ -19,6 +19,9 @@ SIGNALS DETECTED:
   speed       — mobile PageSpeed score < 65 while a competitor scores higher
   weak_title  — collection/category page has a generic title like "Collections"
                  that gives Google no ranking signal
+  gmc         — company does not appear in Google Shopping / Merchant Center
+                 for their own product keywords (UK/Western Europe only,
+                 not applicable for Baltics)
 
 KEYWORD VALIDATION (Claude Haiku):
   Only generic category/product terms are used in hooks.
@@ -91,6 +94,10 @@ PAGE2_MAX_POS     = 20      # page 2 ends at position 20
 PAGESPEED_POOR    = 65      # mobile score below this = signal
 PAGESPEED_GAP_MIN = 10      # competitor must be this much faster
 
+# Countries where Google Shopping / GMC is not available
+# Don't run GMC check for companies in these countries
+GMC_SKIP_COUNTRIES = {"estonia", "latvia", "lithuania", "et", "lv", "lt"}
+
 # Domains to always skip as competitors
 SKIP_COMPETITORS = [
     "amazon", "ebay", "etsy", "google", "wikipedia", "pinterest",
@@ -108,11 +115,11 @@ JUNK_PREFIXES = [
 # CTA variants — assigned by domain hash so consistent per contact,
 # varied across the full list
 CTAS = [
-    "Would it make sense to jump on a quick call so I can show you exactly how we'd fix this?",
-    "Worth a 20-minute call to walk you through exactly how we'd approach it?",
-    "Happy to show you a quick breakdown if it's useful — no strings attached.",
-    "Would it make sense to show you how we'd close that gap?",
-    "If it's useful I can walk you through exactly where the revenue is leaking and how to fix it.",
+    "Want me to show you how to fix it?",
+    "Happy to walk you through it if useful.",
+    "Worth a quick chat about it?",
+    "Let me know if you want me to take a look.",
+    "Can show you exactly what to change if you're interested.",
 ]
 
 # ── RATE LIMITER ──────────────────────────────────────────────────────────────
@@ -514,17 +521,18 @@ def detect_page2_signal(client, company_name, domain):
             pass
 
     if kw_absent:
+        page_url_str = kw.get("url", "").replace("https://www.", "").replace("https://", "")
+        bullet = (
+            f"You're at position {kw['position']} for \"{kw['keyword']}\" "
+            f"({kw['volume']:,} searches/month, ${kw['cpc']} CPC) but the word doesn't appear "
+            f"anywhere on {page_url_str} — easy fix that could move you to page 1."
+        )
+    else:
+        page_url_str = kw.get("url", "").replace("https://www.", "").replace("https://", "")
         bullet = (
             f"You're at position {kw['position']} for \"{kw['keyword']}\" "
             f"({kw['volume']:,} searches/month, ${kw['cpc']} CPC) — "
-            f"the keyword doesn't appear anywhere on the ranking page. "
-            f"That's a quick fix leaving real revenue on the table."
-        )
-    else:
-        bullet = (
-            f"You're stuck at position {kw['position']} for \"{kw['keyword']}\" "
-            f"({kw['volume']:,} searches/month, ${kw['cpc']} CPC) — "
-            f"one page away from traffic you're already close to winning."
+            f"just one page away from a lot more traffic. Page: {page_url_str}"
         )
 
     return bullet, kw
@@ -549,10 +557,10 @@ def detect_schema_signal(client, company_name, domain):
     competitor = re.sub(r"^www\.", "", competitor)
 
     bullet = (
-        f"{competitor} is showing prices and star ratings directly in Google results "
-        f"for \"{kw['keyword']}\" ({kw['volume']:,} searches/month) — "
-        f"{company_name}'s listing shows nothing. "
-        f"That gap costs you clicks you're already earning."
+        f"{competitor} shows up in Google with prices and star ratings for "
+        f"\"{kw['keyword']}\" ({kw['volume']:,} searches/month) — "
+        f"{company_name} shows a plain link. Same search, but their result gets more clicks. "
+        f"You can close that gap with a quick schema fix."
     )
     return bullet, {"keyword": kw["keyword"], "competitor": competitor,
                     "volume": kw["volume"], "cpc": kw["cpc"]}
@@ -622,7 +630,55 @@ def detect_weak_title_signal(client, company_name, domain, page_url, page_title)
     return bullet, {"keyword": kw["keyword"], "volume": kw["volume"],
                     "url": page_url, "title": page_title}
 
-# ── HOOK WRITERS ──────────────────────────────────────────────────────────────
+def detect_gmc_signal(domain, country=""):
+    """
+    Detects whether a company appears in Google Shopping (Merchant Center).
+
+    Google Shopping = the product listings with images, prices and ratings
+    that appear at the top of search results and in Google's AI answers.
+    Not being in GMC means missing from Google Shopping entirely AND from
+    AI-generated product recommendations.
+
+    Method: uses SEMrush shopping_performance to check if the domain has
+    any Google Shopping impressions. If zero shopping keywords, they are
+    almost certainly not in GMC.
+
+    NOT applicable for Baltic countries (Estonia, Latvia, Lithuania) —
+    Google Shopping is not available there.
+
+    Returns bullet string and metadata dict, or (None, None).
+    """
+    # Skip Baltic countries
+    if country and country.lower().strip() in GMC_SKIP_COUNTRIES:
+        return None, None
+
+    # Check SEMrush for shopping keywords
+    rows = semrush_get({
+        "type":           "domain_shopping",
+        "key":            SEMRUSH_API_KEY,
+        "domain":         domain,
+        "database":       "uk",
+        "display_limit":  5,
+        "export_columns": "Ph,Po,Nq",
+        "export_escape":  1,
+    }, label=f"domain_shopping:{domain}")
+
+    if rows:
+        # Company has Shopping presence — signal does not fire
+        return None, None
+
+    # No shopping keywords — company is likely not in GMC
+    # Confirm they have organic presence (qualify.py already checked this,
+    # but double-check they're actually selling products)
+    bullet = (
+        f"{domain} doesn't appear in Google Shopping — meaning no product listings "
+        f"with prices and images show up when people search for what you sell. "
+        f"Google Shopping is also how brands appear in AI search results now. "
+        f"Getting into Merchant Center could open up a whole new traffic source."
+    )
+    return bullet, {"gmc_present": False}
+
+
 def write_hook(client, company_name, domain, signals):
     """
     Writes the full personalised hook using Claude Sonnet.
@@ -632,24 +688,25 @@ def write_hook(client, company_name, domain, signals):
     opener  = "Noticed a couple of things" if len(signals) > 1 else "Noticed something"
     cta     = CTAS[int(hashlib.md5(domain.encode()).hexdigest(), 16) % len(CTAS)]
 
-    prompt = f"""Write a cold email opener for EthicalSEO. Konstantin's voice — direct, confident, like a consultant who did real homework on this specific company. Not a salesperson.
+    prompt = f"""Write a short cold outreach message for EthicalSEO. Tone: casual, friendly, simple. Like a founder texting another founder, not a consultant writing a report.
 
 Company: {company_name} ({domain})
 
 Signals:
 {bullets}
 
-Write the hook:
-1. Open with: "{opener} holding back {company_name}'s organic revenue:"
-2. Each signal as one bullet — specific, data-driven, reference real numbers
+Write the message:
+1. Open with: "{opener} on {company_name}:"
+2. Each signal as one short bullet — keep it simple and specific, reference the real numbers
 3. Close with: "{cta}"
 
 Rules:
-- Every bullet must reference a real specific number, URL, or competitor name
-- No generic SEO speak, no fluff
+- Simple everyday language — if you wouldn't say it out loud to a friend, cut it
+- No fancy phrases like "bleeding traffic", "earned the right to", "genuinely competitive"
+- No SEO jargon
 - No sign-off, no subject line, no "— Konstantin"
-- Under 120 words
-- Output ONLY the hook"""
+- Short and punchy — under 100 words total
+- Output ONLY the message"""
 
     try:
         msg = client.messages.create(
@@ -670,33 +727,32 @@ def write_fallback_hook(client, company_name, domain, competitor):
     comp_str = re.sub(r"^www\.", "", competitor) if competitor else None
 
     if not comp_str:
-        # No competitor found at all — write generic pain point hook
-        prompt = f"""Write a cold email opener for EthicalSEO. Konstantin's voice — direct, grounded.
+        prompt = f"""Write a short cold outreach message for EthicalSEO. Tone: casual, friendly, simple. Like a founder texting another founder.
 
 Company: {company_name} ({domain})
 
-Write a hook:
-1. Open: "Noticed something holding back {company_name}'s organic revenue:"
-2. One bullet: their product pages are missing structured data — competitors are showing prices and star ratings directly in Google results while {company_name}'s listings show plain text. That gap costs clicks on searches they're already ranking for.
+Write the message:
+1. Open: "Noticed something on {company_name}:"
+2. One bullet: their product pages don't have schema markup — competitors show up in Google with prices and star ratings, {company_name} shows a plain link. Same search results page, but the richer result always gets more clicks.
 3. CTA: "{cta}"
 
-Rules: no sign-off, no subject line, under 80 words. Output ONLY the hook."""
+Rules: simple language, no jargon, no sign-off, no subject line, under 70 words. Output ONLY the message."""
     else:
-        prompt = f"""Write a cold email opener for EthicalSEO. Konstantin's voice — direct, grounded.
+        prompt = f"""Write a short cold outreach message for EthicalSEO. Tone: casual, friendly, simple. Like a founder texting another founder.
 
 Company: {company_name} ({domain})
-Top organic competitor: {comp_str}
+Top competitor: {comp_str}
 
-Write a hook:
-1. Open: "Noticed something holding back {company_name}'s organic revenue:"
-2. One bullet: {comp_str} is capturing clicks you should be getting — their product pages are set up to win rich snippets (prices, star ratings) directly in Google results, and {company_name}'s listings show nothing by comparison.
+Write the message:
+1. Open: "Noticed something on {company_name}:"
+2. One bullet: {comp_str} shows up in Google with prices and star ratings on the same searches where {company_name} shows a plain link. Same search intent, but their result attracts more clicks. You can add 5-10% more commercial traffic just by fixing that.
 3. CTA: "{cta}"
 
 Rules:
-- Name the actual competitor — never say "competitors in your space"
-- No sign-off, no subject line
-- Under 80 words
-- Output ONLY the hook"""
+- Name the actual competitor
+- Simple language, no jargon, no sign-off, no subject line
+- Under 70 words
+- Output ONLY the message"""
 
     try:
         msg = client.messages.create(
@@ -760,8 +816,9 @@ def process_company(args):
     row     = dict(row)
     signals = []
     meta    = {}
+    country = str(row.get("country", "") or "").strip()
 
-    # Run all four signal checks
+    # Run all five signal checks
     # Page 2
     p2_bullet, p2_meta = detect_page2_signal(client, company, domain)
     if p2_bullet:
@@ -792,7 +849,12 @@ def process_company(args):
         meta.update({f"weak_title_{k}": v for k, v in (wt_meta or {}).items()})
         print(f"    ✓ weak_title: \"{wt_meta.get('keyword','')}\"")
 
-    # Write hook
+    # GMC
+    gmc_bullet, gmc_meta = detect_gmc_signal(domain, country)
+    if gmc_bullet:
+        signals.append({"type": "gmc", "bullet": gmc_bullet})
+        meta.update({f"gmc_{k}": v for k, v in (gmc_meta or {}).items()})
+        print(f"    ✓ gmc: not in Google Shopping")
     if signals:
         hook       = write_hook(client, company, domain, signals)
         competitor = (
