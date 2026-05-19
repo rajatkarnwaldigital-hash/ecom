@@ -1,0 +1,12 @@
+first_name,last_name,email,linkedin_url,job_title,company_name,domain,hook,signals_detected,competitor,review_flag,page2_keyword,page2_position,page2_cpc,page2_volume,schema_keyword,schema_competitor,speed_score,speed_competitor,speed_competitor_score,weak_title_keyword,weak_title_url,weak_title_title
+James,Carter,james@acmefootwear.co.uk,https://www.linkedin.com/in/jamescarter,CEO,Acme Footwear Ltd,acmefootwear.co.uk,"Noticed a couple of things holding back Acme Footwear's organic revenue:
+
+- You're at position 14 for ""mens leather boots uk"" (5,400 searches/month, $2.80 CPC) — the keyword doesn't appear anywhere on the ranking page. That's a quick fix leaving real revenue on the table.
+- office.co.uk is showing prices and star ratings directly in Google results for ""leather chelsea boots"" (3,600 searches/month) — Acme Footwear's listing shows nothing. That gap costs you clicks you're already earning.
+
+Would it make sense to jump on a quick call so I can show you exactly how we'd fix this?",page2, schema,office.co.uk,False,mens leather boots uk,14,2.8,5400,leather chelsea boots,office.co.uk,,,,,
+Sarah,Mitchell,sarah@bluestoneapparel.com,https://www.linkedin.com/in/sarahmitchell,Founder,Blue Stone Apparel,bluestoneapparel.com,"Noticed something holding back Blue Stone Apparel's organic revenue:
+
+- next.co.uk is showing prices and star ratings directly in Google results for ""womens casual dresses"" (12,100 searches/month) — Blue Stone Apparel's listing shows nothing. That gap costs you clicks you're already earning.
+
+Worth a 20-minute call to walk you through exactly how we'd approach it?",schema,next.co.uk,False,,,,,,womens casual dresses,next.co.uk,,,,,

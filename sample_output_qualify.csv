@@ -1,0 +1,6 @@
+company_name,domain,industry,city,country,employees,site_alive,is_english,authority_score,monthly_traffic,qualified,fail_reason
+Acme Footwear Ltd,acmefootwear.co.uk,Retail,London,United Kingdom,45,True,True,28,12400,True,
+Blue Stone Apparel,bluestoneapparel.com,Apparel & Fashion,Manchester,United Kingdom,22,True,True,15,3200,True,
+Nordic Home Goods,nordichome.ee,Consumer Goods,Tallinn,Estonia,18,True,False,8,420,False,non_english
+Coastal Running Co,coastalrunning.co.uk,Retail,Bristol,United Kingdom,31,True,True,6,280,False,low_authority_score
+Ember Skincare,emberskincare.com,Consumer Goods,Edinburgh,United Kingdom,12,False,,,,False,dead_site
