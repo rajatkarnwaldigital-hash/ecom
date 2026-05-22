@@ -72,6 +72,9 @@ Uses `url_organic` to find what keywords the specific page is ranking for (not t
 
 Hook format: "balancecoffee.co.uk/collections is titled 'Collections' — a page that should be targeting 'specialty coffee beans uk' (4,400 searches/month) is giving Google nothing to rank it on."
 
+### Signal 5 — Google Merchant Center (GMC)
+Checks whether the company appears in Google Shopping using SEMrush's domain_shopping endpoint. If the domain has zero Shopping keywords, they're almost certainly not in Google Merchant Center — meaning no product listings with images, prices, and ratings appear when people search for what they sell. GMC is also the primary way brands appear in Google's AI-generated answers. Automatically skipped for Baltic countries (Estonia, Latvia, Lithuania) where Google Shopping is not available.
+
 ---
 
 ## Validation logic (why this matters)
